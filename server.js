@@ -70,6 +70,11 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
+// ✅ Default root route
+app.get('/', (req, res) => {
+  res.send('✅ API en ligne — Bienvenue sur le backend ALMAS & DIMAS');
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({
