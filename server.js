@@ -8,32 +8,31 @@ const helmet = require("helmet");
 const hpp = require("hpp");
 const rateLimit = require("express-rate-limit");
 
-// Charger les variables d'environnement
 dotenv.config();
 
-// Importation des routes
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
 const productRoutes = require("./routes/product");
 const cartRoutes = require("./routes/cart");
 const orderRoutes = require("./routes/order");
 
-// Importation des middlewares
 const { sanitizeInput } = require('./middleware/validation');
-
-// Importation de la configuration de base de données
 const { connectDB } = require('./config/database');
 
-// Initialisation de l'application Express
 const app = express();
 
-// Configuration du port
 const PORT = process.env.PORT || 5000;
 
-// Connexion à la base de données MongoDB
+// Require BACKEND_URL env variable, no fallback in production
+if (!process.env.BACKEND_URL && process.env.NODE_ENV === 'production') {
+  console.error('❌ ERROR: BACKEND_URL environment variable is not defined!');
+  process.exit(1);
+}
+
+const backendUrl = process.env.BACKEND_URL || `http://localhost:${PORT}`;
+
 connectDB();
 
-// Configuration CORS
 app.use(cors({
   origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [],
   credentials: true,
@@ -52,17 +51,13 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Middleware de nettoyage
 app.use(sanitizeInput);
 
-// Static file serving (e.g., uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Logger in development
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -70,12 +65,20 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// ✅ Default root route
+// Root route for sanity check and to avoid 'Cannot GET /api'
 app.get('/', (req, res) => {
-  res.send('✅ API en ligne — Bienvenue sur le backend ALMAS & DIMAS');
+  res.send(`✅ API en ligne — Backend ALMAS & DIMAS à ${backendUrl}`);
 });
 
-// Health check
+// Optional: respond on /api root to avoid frontend 404
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Bienvenue sur l\'API ALMAS & DIMAS',
+    backendUrl
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     success: true,
@@ -85,14 +88,12 @@ app.get('/health', (req, res) => {
   });
 });
 
-// ✅ Routes API
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 
-// Error handler
 app.use((error, req, res, next) => {
   console.error('Erreur globale:', error);
 
@@ -125,23 +126,17 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Unhandled promise rejection
 process.on('unhandledRejection', (err, promise) => {
   console.error('Promesse rejetée non gérée:', err.message);
-  server.close(() => {
-    process.exit(1);
-  });
+  server.close(() => process.exit(1));
 });
 
-// Uncaught exception
 process.on('uncaughtException', (err) => {
   console.error('Exception non capturée:', err.message);
   process.exit(1);
 });
 
-// Start server
 const server = app.listen(PORT, '0.0.0.0', () => {
-  const backendUrl = process.env.BACKEND_URL || `http://localhost:${PORT}`;
   console.log(`
 🚀 Serveur ALMAS & DIMAS démarré avec succès!
 📍 Port: ${PORT}
@@ -153,7 +148,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   `);
 });
 
-// Graceful shutdown
 const shutdown = () => {
   console.log('🛑 Arrêt du serveur...');
   server.close(() => {
