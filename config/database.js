@@ -1,6 +1,3 @@
-// Configuration de la connexion à MongoDB
-// Ce fichier gère la connexion à la base de données MongoDB pour notre application
-
 const mongoose = require('mongoose');
 
 /**
@@ -9,23 +6,17 @@ const mongoose = require('mongoose');
  */
 const connectDB = async () => {
   try {
-    // Skip MongoDB connection if URI is not provided
     if (!process.env.MONGO_URI) {
       console.log('⚠️  MongoDB URI not provided, running without database');
       return;
     }
 
-    // Tentative de connexion à MongoDB avec l'URI définie dans .env
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      // Options de connexion pour optimiser les performances et la stabilité
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // Connexion sans options dépréciées
+    const conn = await mongoose.connect(process.env.MONGO_URI);
 
     console.log(`✅ MongoDB connecté avec succès: ${conn.connection.host}`);
     console.log(`📊 Base de données: ${conn.connection.name}`);
-    
-    // Gestion des événements de connexion
+
     mongoose.connection.on('connected', () => {
       console.log('🔗 Mongoose connecté à MongoDB');
     });
@@ -41,7 +32,6 @@ const connectDB = async () => {
   } catch (error) {
     console.error('❌ Erreur lors de la connexion à MongoDB:', error.message);
     console.log('⚠️  Continuing without database connection...');
-    // Don't exit the process, just continue without database
   }
 };
 
@@ -58,7 +48,6 @@ const disconnectDB = async () => {
   }
 };
 
-// Gestion de l'arrêt gracieux de l'application
 process.on('SIGINT', async () => {
   console.log('\n🛑 Signal SIGINT reçu, fermeture de l\'application...');
   await disconnectDB();
@@ -66,4 +55,3 @@ process.on('SIGINT', async () => {
 });
 
 module.exports = { connectDB, disconnectDB };
-
