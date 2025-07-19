@@ -1,6 +1,4 @@
 // Serveur principal pour ALMAS & DIMAS
-// Point d'entrée de l'application backend Node.js avec Express
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -47,25 +45,24 @@ app.use(helmet());
 app.use(hpp());
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: "Too many requests from this IP, please try again after 15 minutes",
 });
 
-// Apply to all requests
 app.use(limiter);
 
-// Parser JSON avec limite de taille
+// Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Middleware de nettoyage des données
+// Middleware de nettoyage
 app.use(sanitizeInput);
 
-// Servir les fichiers statiques (images uploadées)
+// Static file serving (e.g., uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-
+// Logger in development
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -73,7 +70,7 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// Route de santé pour vérifier que le serveur fonctionne
+// Health check
 app.get('/health', (req, res) => {
   res.json({
     success: true,
@@ -83,56 +80,39 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes API
+// ✅ Routes API
 app.use('/api/auth', authRoutes);
-app.use("/api/dashboard", dashboardRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
 
+// Error handler
 app.use((error, req, res, next) => {
   console.error('Erreur globale:', error);
 
-  // Erreur de validation MongoDB
   if (error.name === 'ValidationError') {
     const errors = Object.values(error.errors).map(err => err.message);
-    return res.status(400).json({
-      success: false,
-      message: 'Données invalides',
-      errors: errors
-    });
+    return res.status(400).json({ success: false, message: 'Données invalides', errors });
   }
 
-  // Erreur de cast MongoDB (ID invalide)
   if (error.name === 'CastError') {
-    return res.status(400).json({
-      success: false,
-      message: 'ID invalide'
-    });
+    return res.status(400).json({ success: false, message: 'ID invalide' });
   }
 
-  // Erreur de duplication MongoDB
   if (error.code === 11000) {
     const field = Object.keys(error.keyValue)[0];
-    return res.status(400).json({
-      success: false,
-      message: `${field} déjà existant`
-    });
+    return res.status(400).json({ success: false, message: `${field} déjà existant` });
   }
 
-  // Erreur JWT
   if (error.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token invalide'
-    });
+    return res.status(401).json({ success: false, message: 'Token invalide' });
   }
 
   if (error.name === 'TokenExpiredError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token expiré'
-    });
+    return res.status(401).json({ success: false, message: 'Token expiré' });
   }
 
-  // Erreur générique
   res.status(error.status || 500).json({
     success: false,
     message: error.message || 'Erreur interne du serveur',
@@ -140,37 +120,37 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Gestion des promesses rejetées non capturées
+// Unhandled promise rejection
 process.on('unhandledRejection', (err, promise) => {
   console.error('Promesse rejetée non gérée:', err.message);
-  // Fermer le serveur proprement
   server.close(() => {
     process.exit(1);
   });
 });
 
-// Gestion des exceptions non capturées
+// Uncaught exception
 process.on('uncaughtException', (err) => {
   console.error('Exception non capturée:', err.message);
   process.exit(1);
 });
 
-// Démarrage du serveur
+// Start server
 const server = app.listen(PORT, '0.0.0.0', () => {
+  const backendUrl = process.env.BACKEND_URL || `http://localhost:${PORT}`;
   console.log(`
 🚀 Serveur ALMAS & DIMAS démarré avec succès!
 📍 Port: ${PORT}
 🌍 Environnement: ${process.env.NODE_ENV || 'development'}
-🔗 URL: ${process.env.BACKEND_URL || `http://localhost:${PORT}`}
-📊 Dashboard Admin: ${process.env.BACKEND_URL || `http://localhost:${PORT}`}/api/dashboard/admin
-👤 Dashboard Vendeur: ${process.env.BACKEND_URL || `http://localhost:${PORT}`}/api/dashboard/seller
-🏥 Health Check: ${process.env.BACKEND_URL || `http://localhost:${PORT}`}/health
+🔗 URL: ${backendUrl}
+📊 Dashboard Admin: ${backendUrl}/api/dashboard/admin
+👤 Dashboard Vendeur: ${backendUrl}/api/dashboard/seller
+🏥 Health Check: ${backendUrl}/health
   `);
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 Signal SIGTERM reçu. Arrêt du serveur...');
+const shutdown = () => {
+  console.log('🛑 Arrêt du serveur...');
   server.close(() => {
     console.log('✅ Serveur arrêté proprement');
     mongoose.connection.close(false, () => {
@@ -178,18 +158,9 @@ process.on('SIGTERM', () => {
       process.exit(0);
     });
   });
-});
+};
 
-process.on('SIGINT', () => {
-  console.log('🛑 Signal SIGINT reçu. Arrêt du serveur...');
-  server.close(() => {
-    console.log('✅ Serveur arrêté proprement');
-    mongoose.connection.close(false, () => {
-      console.log('✅ Connexion MongoDB fermée');
-      process.exit(0);
-    });
-  });
-});
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 module.exports = app;
-
